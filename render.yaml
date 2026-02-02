@@ -1,0 +1,23 @@
+services:
+  - type: worker
+    name: technogoliki-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: API_TOKEN
+        sync: false
+      - key: MYSQL_HOST
+        value: fvh1.spaceweb.ru
+      - key: MYSQL_PORT
+        value: 3306
+      - key: MYSQL_USER
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false
+      - key: MYSQL_DB
+        value: hlebopash2
+      - key: ADMIN_IDS
+        value: "1981956063,994634615,1412137237,5552131367"
+      - key: LOG_LEVEL
+        value: INFO

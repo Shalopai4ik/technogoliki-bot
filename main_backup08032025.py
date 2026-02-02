@@ -13,63 +13,156 @@ from typing import Optional, Dict, Any
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
-# =========== КОНФИГУРАЦИЯ ===========
 
-# Файл конфигурации
-CONFIG_FILE = 'config.py'
+# =========== КОНФИГУРАЦИЯ ДЛЯ RENDER.COM ===========
 
-# Значения по умолчанию
-DEFAULT_CONFIG = {
-    'API_TOKEN': 'ВАШ_ТОКЕН_БОТА',
-    'MYSQL_HOST': 'fvh1.spaceweb.ru',
-    'MYSQL_PORT': 3306,
-    'MYSQL_USER': 'hlebopash2',
-    'MYSQL_PASSWORD': 'ВАШ_ПАРОЛЬ',
-    'MYSQL_DB': 'hlebopash2',
-    'VK_ACCESS_TOKEN': 'ВАШ_VK_ТОКЕН',
-    'VK_GROUP_ID': '229287670',
-    'CHANNEL_ID': '@technogoliki',
-    'CHANNEL_USERNAME': 'technogoliki',
-    'ADMIN_IDS': [1981956063, 994634615, 1412137237, 5552131367],
-    'LOG_LEVEL': 'INFO',
-    'REQUEST_TIMEOUT': 30,
-    'POLLING_TIMEOUT': 10,
-}
+def load_config():
+    """Загрузка конфигурации из переменных окружения или файла"""
 
-# Попытка загрузить конфиг из config.py
-try:
-    if os.path.exists(CONFIG_FILE):
-        import importlib.util
+    # Проверяем, работаем ли мы на Render или Railway
+    IS_CLOUD = os.getenv('RENDER') == 'true' or os.getenv('RAILWAY_STATIC_URL') is not None
 
-        spec = importlib.util.spec_from_file_location("config", CONFIG_FILE)
-        config_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(config_module)
+    if IS_CLOUD:
+        # Используем переменные окружения для облачного хостинга
+        logger.info("🌐 Обнаружен облачный хостинг, использую переменные окружения")
 
-        config = {}
-        for key in DEFAULT_CONFIG.keys():
-            if hasattr(config_module, key):
-                config[key] = getattr(config_module, key)
-            else:
-                config[key] = DEFAULT_CONFIG[key]
-        CONFIG_SOURCE = f'from {CONFIG_FILE}'
+        API_TOKEN = os.getenv('API_TOKEN')
+        MYSQL_HOST = os.getenv('MYSQL_HOST', 'fvh1.spaceweb.ru')
+        MYSQL_PORT = int(os.getenv('MYSQL_PORT', '3306'))
+        MYSQL_USER = os.getenv('MYSQL_USER', 'hlebopash2')
+        MYSQL_PASSWORD = os.getenv('MYSQL_PASSWORD')
+        MYSQL_DB = os.getenv('MYSQL_DB', 'hlebopash2')
+        VK_ACCESS_TOKEN = os.getenv('VK_ACCESS_TOKEN', '')
+        VK_GROUP_ID = os.getenv('VK_GROUP_ID', '229287670')
+        CHANNEL_ID = os.getenv('CHANNEL_ID', '@technogoliki')
+        CHANNEL_USERNAME = os.getenv('CHANNEL_USERNAME', 'technogoliki')
+
+        # Обработка ADMIN_IDS из строки
+        admin_ids_str = os.getenv('ADMIN_IDS', '1981956063,994634615,1412137237,5552131367')
+        ADMIN_IDS = [int(id.strip()) for id in admin_ids_str.split(',') if id.strip()]
+
+        LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+        REQUEST_TIMEOUT = int(os.getenv('REQUEST_TIMEOUT', '30'))
+        POLLING_TIMEOUT = int(os.getenv('POLLING_TIMEOUT', '10'))
+
+        CONFIG_SOURCE = 'переменные окружения (облачный хостинг)'
+
+        # Проверка обязательных переменных для облака
+        missing_vars = []
+        for var_name, var_value in [
+            ('API_TOKEN', API_TOKEN),
+            ('MYSQL_USER', MYSQL_USER),
+            ('MYSQL_PASSWORD', MYSQL_PASSWORD),
+            ('MYSQL_DB', MYSQL_DB)
+        ]:
+            if not var_value:
+                missing_vars.append(var_name)
+
+        if missing_vars:
+            error_msg = f"❌ Отсутствуют обязательные переменные окружения: {', '.join(missing_vars)}\n"
+            error_msg += "Добавьте их в настройках Render.com:\n"
+            error_msg += "1. Зайдите в Dashboard вашего проекта\n"
+            error_msg += "2. Выберите 'Environment'\n"
+            error_msg += "3. Добавьте переменные: API_TOKEN, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DB\n"
+            error_msg += "4. Перезапустите деплой"
+            print(error_msg)
+            if 'API_TOKEN' in missing_vars:
+                print("\n🔑 Как получить API_TOKEN:")
+                print("1. Найдите @BotFather в Telegram")
+                print("2. Отправьте /newbot")
+                print("3. Следуйте инструкциям")
+                print("4. Скопируйте полученный токен")
+            sys.exit(1)
+
     else:
-        # Создаем config.py с шаблоном
-        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-            f.write("# Конфигурация бота\n")
-            f.write("# ЗАМЕНИТЕ ВСЕ 'ВАШ_...' НА РЕАЛЬНЫЕ ЗНАЧЕНИЯ!\n\n")
-            for key, value in DEFAULT_CONFIG.items():
-                if isinstance(value, str):
-                    f.write(f"{key} = '{value}'\n")
-                else:
-                    f.write(f"{key} = {value}\n")
-        config = DEFAULT_CONFIG.copy()
-        CONFIG_SOURCE = f'default (создан {CONFIG_FILE})'
-except Exception as e:
-    print(f"⚠️ Ошибка загрузки конфига: {e}")
-    config = DEFAULT_CONFIG.copy()
-    CONFIG_SOURCE = 'default (ошибка загрузки)'
+        # Локальный запуск - используем config.py
+        logger.info("💻 Локальный запуск, использую config.py")
 
-# Распаковка конфига
+        try:
+            import config
+
+            API_TOKEN = config.API_TOKEN
+            MYSQL_HOST = config.MYSQL_HOST
+            MYSQL_PORT = config.MYSQL_PORT
+            MYSQL_USER = config.MYSQL_USER
+            MYSQL_PASSWORD = config.MYSQL_PASSWORD
+            MYSQL_DB = config.MYSQL_DB
+            VK_ACCESS_TOKEN = getattr(config, 'VK_ACCESS_TOKEN', '')
+            VK_GROUP_ID = getattr(config, 'VK_GROUP_ID', '229287670')
+            CHANNEL_ID = getattr(config, 'CHANNEL_ID', '@technogoliki')
+            CHANNEL_USERNAME = getattr(config, 'CHANNEL_USERNAME', 'technogoliki')
+            ADMIN_IDS = getattr(config, 'ADMIN_IDS', [1981956063, 994634615, 1412137237, 5552131367])
+            LOG_LEVEL = getattr(config, 'LOG_LEVEL', 'INFO')
+            REQUEST_TIMEOUT = getattr(config, 'REQUEST_TIMEOUT', 30)
+            POLLING_TIMEOUT = getattr(config, 'POLLING_TIMEOUT', 10)
+
+            CONFIG_SOURCE = 'config.py (локальный)'
+
+            # Проверка токена для локального запуска
+            if not API_TOKEN or API_TOKEN == 'ВАШ_ТОКЕН_БОТА':
+                print("\n" + "=" * 60)
+                print("❌ ОШИБКА: Токен бота не установлен!")
+                print("=" * 60)
+                print("Чтобы получить токен:")
+                print("1. Откройте Telegram и найдите @BotFather")
+                print("2. Отправьте /newbot")
+                print("3. Следуйте инструкциям")
+                print("4. Полученный токен добавьте в config.py в API_TOKEN")
+                print("=" * 60)
+                sys.exit(1)
+
+        except ImportError:
+            print("\n" + "=" * 60)
+            print("❌ Файл config.py не найден!")
+            print("=" * 60)
+            print("Создайте файл config.py со следующим содержимым:")
+            print("""
+API_TOKEN = 'ваш_токен_бота'
+MYSQL_HOST = 'fvh1.spaceweb.ru'
+MYSQL_PORT = 3306
+MYSQL_USER = 'hlebopash2'
+MYSQL_PASSWORD = 'ваш_пароль'
+MYSQL_DB = 'hlebopash2'
+VK_ACCESS_TOKEN = ''
+VK_GROUP_ID = '229287670'
+CHANNEL_ID = '@technogoliki'
+CHANNEL_USERNAME = 'technogoliki'
+ADMIN_IDS = [1981956063, 994634615, 1412137237, 5552131367]
+LOG_LEVEL = 'INFO'
+REQUEST_TIMEOUT = 30
+POLLING_TIMEOUT = 10
+""")
+            print("=" * 60)
+            sys.exit(1)
+        except AttributeError as e:
+            print(f"❌ Ошибка в config.py: {e}")
+            print("Убедитесь что все переменные определены в config.py")
+            sys.exit(1)
+
+    return {
+        'API_TOKEN': API_TOKEN,
+        'MYSQL_HOST': MYSQL_HOST,
+        'MYSQL_PORT': MYSQL_PORT,
+        'MYSQL_USER': MYSQL_USER,
+        'MYSQL_PASSWORD': MYSQL_PASSWORD,
+        'MYSQL_DB': MYSQL_DB,
+        'VK_ACCESS_TOKEN': VK_ACCESS_TOKEN,
+        'VK_GROUP_ID': VK_GROUP_ID,
+        'CHANNEL_ID': CHANNEL_ID,
+        'CHANNEL_USERNAME': CHANNEL_USERNAME,
+        'ADMIN_IDS': ADMIN_IDS,
+        'LOG_LEVEL': LOG_LEVEL,
+        'REQUEST_TIMEOUT': REQUEST_TIMEOUT,
+        'POLLING_TIMEOUT': POLLING_TIMEOUT,
+        'CONFIG_SOURCE': CONFIG_SOURCE,
+        'IS_CLOUD': IS_CLOUD
+    }
+
+
+# Загружаем конфигурацию
+config = load_config()
+
+# Распаковка конфига для удобства
 API_TOKEN = config['API_TOKEN']
 MYSQL_HOST = config['MYSQL_HOST']
 MYSQL_PORT = config['MYSQL_PORT']
@@ -84,19 +177,8 @@ ADMIN_IDS = config['ADMIN_IDS']
 LOG_LEVEL = config['LOG_LEVEL']
 REQUEST_TIMEOUT = config['REQUEST_TIMEOUT']
 POLLING_TIMEOUT = config['POLLING_TIMEOUT']
-
-# Проверка токена
-if not API_TOKEN or API_TOKEN == 'ВАШ_ТОКЕН_БОТА':
-    print("\n" + "=" * 60)
-    print("❌ ОШИБКА: Токен бота не установлен!")
-    print("=" * 60)
-    print("Чтобы получить токен:")
-    print("1. Откройте Telegram и найдите @BotFather")
-    print("2. Отправьте /newbot")
-    print("3. Следуйте инструкциям")
-    print("4. Полученный токен добавьте в config.py в API_TOKEN")
-    print("=" * 60)
-    sys.exit(1)
+CONFIG_SOURCE = config['CONFIG_SOURCE']
+IS_CLOUD = config['IS_CLOUD']
 
 
 # =========== ЛОГГИРОВАНИЕ И МОНИТОРИНГ ===========
@@ -157,14 +239,23 @@ log_levels = {
     'CRITICAL': logging.CRITICAL
 }
 
-logging.basicConfig(
-    level=log_levels.get(LOG_LEVEL.upper(), logging.INFO),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler("bot.log", encoding='utf-8', mode='a'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+# Для Render логируем только в консоль
+if IS_CLOUD:
+    logging.basicConfig(
+        level=log_levels.get(LOG_LEVEL.upper(), logging.INFO),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)]
+    )
+else:
+    logging.basicConfig(
+        level=log_levels.get(LOG_LEVEL.upper(), logging.INFO),
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler("bot.log", encoding='utf-8', mode='a'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+
 logger = logging.getLogger(__name__)
 
 # Инициализация мониторинга
@@ -222,7 +313,7 @@ dp = Dispatcher()
 # Инициализация VK (если доступно)
 vk = None
 vk_upload = None
-if VK_AVAILABLE and VK_ACCESS_TOKEN and VK_ACCESS_TOKEN != 'ВАШ_VK_ТОКЕН':
+if VK_AVAILABLE and VK_ACCESS_TOKEN:
     try:
         vk_session = VkApi(token=VK_ACCESS_TOKEN)
         vk = vk_session.get_api()
@@ -241,10 +332,13 @@ else:
 current_topic: Optional[str] = None
 user_states: Dict[int, str] = {}  # Состояния пользователей
 
-# Папки для постов
-TOPICS = ["Нейросети", "Программирование", "Разработка игр", "Технологии"]
-for topic in TOPICS:
-    os.makedirs(topic, exist_ok=True)
+# Папки для постов (только если не в облаке)
+if not IS_CLOUD:
+    TOPICS = ["Нейросети", "Программирование", "Разработка игр", "Технологии"]
+    for topic in TOPICS:
+        os.makedirs(topic, exist_ok=True)
+else:
+    logger.info("☁️  Облачный режим: сохранение постов в файлы отключено")
 
 
 # =========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===========
@@ -277,6 +371,7 @@ async def get_mysql_connection():
         return connection
     except Exception as e:
         logger.error(f"Ошибка подключения к MySQL: {e}")
+        logger.error(f"Подробности: host={MYSQL_HOST}, user={MYSQL_USER}, db={MYSQL_DB}")
         monitor.increment('errors')
         raise
 
@@ -359,14 +454,7 @@ async def create_tables_if_not_exists():
                                      (
                                          20
                                      ) DEFAULT 'pending',
-                                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                         FOREIGN KEY
-                                     (
-                                         user_id
-                                     ) REFERENCES users_list
-                                     (
-                                         user_id
-                                     )
+                                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                                          )
                                      """)
 
@@ -609,7 +697,6 @@ async def select_topic(message: Message):
     }
 
     topic = topic_map[message.text]
-    # Используем global для изменения глобальной переменной
     global current_topic
     current_topic = topic
     user_states[user_id] = f'waiting_post_{topic}'
@@ -665,7 +752,6 @@ async def process_post_with_photo(message: Message):
         )
         return
 
-    # Используем global для доступа к глобальной переменной
     global current_topic
     if not current_topic:
         await message.answer(
@@ -683,32 +769,63 @@ async def process_post_with_photo(message: Message):
         return
 
     try:
-        # Создаем папки для темы
-        topic_folder = current_topic
-        images_folder = os.path.join(topic_folder, "Картинки")
-        content_folder = os.path.join(topic_folder, "Содержимое")
+        # В облачном режиме не сохраняем файлы
+        if IS_CLOUD:
+            caption = message.caption
+            hashtag = f"#{current_topic.lower().replace(' ', '_')}"
 
-        os.makedirs(images_folder, exist_ok=True)
-        os.makedirs(content_folder, exist_ok=True)
+            # Просто логируем и уведомляем
+            logger.info(f"📸 Пользователь {user_id} предложил пост в тему '{current_topic}'")
 
-        # Ищем следующий номер
-        existing_images = [f for f in os.listdir(images_folder) if f.endswith('.jpg')]
-        existing_numbers = [int(f.split('.')[0]) for f in existing_images if f.split('.')[0].isdigit()]
-        next_number = max(existing_numbers) + 1 if existing_numbers else 1
+            success_message = (
+                f"✅ *Пост успешно принят\\!*\n\n"
+                f"📁 Тема: *{current_topic}*\n"
+                f"📝 Описание: {len(caption)} символов\n\n"
+                f"Ваш пост отправлен на модерацию администраторам\\. "
+                f"Спасибо за предложку\\! 🙏\n\n"
+                f"Хэштег: {hashtag}\n"
+                f"ℹ️ *В облачном режиме фото не сохраняется*"
+            )
+        else:
+            # Локальный режим - сохраняем файлы
+            topic_folder = current_topic
+            images_folder = os.path.join(topic_folder, "Картинки")
+            content_folder = os.path.join(topic_folder, "Содержимое")
 
-        # Сохраняем фото
-        photo = message.photo[-1]
-        photo_path = os.path.join(images_folder, f"{next_number:04d}.jpg")
-        await bot.download(photo, destination=photo_path)
+            os.makedirs(images_folder, exist_ok=True)
+            os.makedirs(content_folder, exist_ok=True)
 
-        # Сохраняем текст
-        caption = message.caption
-        hashtag = f"#{current_topic.lower().replace(' ', '_')}"
-        text_with_hashtag = f"{caption}\n\n{hashtag}"
+            # Ищем следующий номер
+            existing_images = [f for f in os.listdir(images_folder) if f.endswith('.jpg')]
+            existing_numbers = [int(f.split('.')[0]) for f in existing_images if f.split('.')[0].isdigit()]
+            next_number = max(existing_numbers) + 1 if existing_numbers else 1
 
-        text_path = os.path.join(content_folder, f"{next_number:04d}.txt")
-        with open(text_path, 'w', encoding='utf-8') as f:
-            f.write(text_with_hashtag)
+            # Сохраняем фото
+            photo = message.photo[-1]
+            photo_path = os.path.join(images_folder, f"{next_number:04d}.jpg")
+            await bot.download(photo, destination=photo_path)
+
+            # Сохраняем текст
+            caption = message.caption
+            hashtag = f"#{current_topic.lower().replace(' ', '_')}"
+            text_with_hashtag = f"{caption}\n\n{hashtag}"
+
+            text_path = os.path.join(content_folder, f"{next_number:04d}.txt")
+            with open(text_path, 'w', encoding='utf-8') as f:
+                f.write(text_with_hashtag)
+
+            success_message = (
+                f"✅ *Пост успешно сохранён\\!*\n\n"
+                f"📁 Тема: *{current_topic}*\n"
+                f"📷 Фото: сохранено\n"
+                f"📝 Описание: {len(caption)} символов\n"
+                f"🔢 Номер: #{next_number:04d}\n\n"
+                f"Ваш пост отправлен на модерацию администраторам\\. "
+                f"Спасибо за предложку\\! 🙏\n\n"
+                f"Хэштег: {hashtag}"
+            )
+
+            logger.info(f"📸 Пользователь {user_id} предложил пост в тему '{current_topic}' (№{next_number})")
 
         # Обновляем состояние
         if user_id in user_states:
@@ -730,25 +847,11 @@ async def process_post_with_photo(message: Message):
         except Exception as e:
             logger.error(f"Ошибка обновления статуса поста: {e}")
 
-        # Ответ пользователю
-        success_message = (
-            f"✅ *Пост успешно сохранён\\!*\n\n"
-            f"📁 Тема: *{current_topic}*\n"
-            f"📷 Фото: сохранено\n"
-            f"📝 Описание: {len(caption)} символов\n"
-            f"🔢 Номер: #{next_number:04d}\n\n"
-            f"Ваш пост отправлен на модерацию администраторам\\. "
-            f"Спасибо за предложку\\! 🙏\n\n"
-            f"Хэштег: {hashtag}"
-        )
-
         await message.answer(
             success_message,
             parse_mode=ParseMode.MARKDOWN_V2,
             reply_markup=get_main_keyboard()
         )
-
-        logger.info(f"📸 Пользователь {user_id} ({username}) предложил пост в тему '{current_topic}'")
 
         # Уведомление админам
         admin_notification = (
@@ -756,8 +859,12 @@ async def process_post_with_photo(message: Message):
             f"👤 Пользователь: {escape_markdown(username)} \\(ID: {user_id}\\)\n"
             f"🏷️ Тема: *{current_topic}*\n"
             f"📝 Длина описания: {len(caption)} символов\n"
-            f"🔢 Номер: #{next_number:04d}"
         )
+
+        if not IS_CLOUD:
+            admin_notification += f"🔢 Номер: #{next_number:04d}"
+        else:
+            admin_notification += "☁️ *Облачный режим*"
 
         for admin_id in ADMIN_IDS:
             try:
@@ -901,6 +1008,7 @@ async def cmd_status(message: Message):
     monitor.increment('commands_processed')
 
     # Информация о системе
+    system_info = ""
     try:
         import psutil
         cpu_percent = psutil.cpu_percent(interval=1)
@@ -914,6 +1022,8 @@ async def cmd_status(message: Message):
         )
     except ImportError:
         system_info = "• psutil не установлен для мониторинга системы\n\n"
+    except Exception as e:
+        system_info = f"• Ошибка мониторинга системы: {e}\n\n"
 
     # Информация о боте
     try:
@@ -928,7 +1038,8 @@ async def cmd_status(message: Message):
             "🤖 *Статус бота:*\n"
             f"• Имя: @{bot_username}\n"
             f"• Время работы: {monitor.get_uptime()}\n"
-            f"• Запущен: {datetime.fromtimestamp(monitor.start_time).strftime('%d.%m.%Y %H:%M:%S')}\n\n"
+            f"• Запущен: {datetime.fromtimestamp(monitor.start_time).strftime('%d.%m.%Y %H:%M:%S')}\n"
+            f"• Режим: {'☁️ Облачный' if IS_CLOUD else '💻 Локальный'}\n\n"
 
             "📊 *Статистика:*\n"
             f"• Сообщений: {monitor.stats['messages_received']}\n"
@@ -944,7 +1055,8 @@ async def cmd_status(message: Message):
 
             "🔗 *Интеграции:*\n"
             f"• VK: {'✅' if vk else '❌'}\n"
-            f"• Канал: {CHANNEL_USERNAME}"
+            f"• Канал: {CHANNEL_USERNAME}\n"
+            f"• Админов: {len(ADMIN_IDS)}"
     )
 
     await message.answer(
@@ -1028,6 +1140,7 @@ async def cmd_stats(message: Message):
         stats_text += "Нет постов\n"
 
     stats_text += f"\n📊 *Время работы бота:* {monitor.get_uptime()}"
+    stats_text += f"\n🌐 *Режим:* {'☁️ Облачный' if IS_CLOUD else '💻 Локальный'}"
 
     await message.answer(
         stats_text,
@@ -1044,10 +1157,7 @@ async def cmd_clean(message: Message):
     monitor.increment('messages_received')
     monitor.increment('commands_processed')
 
-    # Используем global для изменения глобальной переменной
     global current_topic
-
-    # Сбрасываем состояния
     user_states.clear()
     current_topic = None
 
@@ -1161,10 +1271,11 @@ async def on_startup():
     print("🤖 ЗАПУСК ТЕЛЕГРАМ БОТА")
     print("=" * 60)
     print(f"Конфигурация: {CONFIG_SOURCE}")
-    print(f"Токен бота: {'✅ Установлен' if API_TOKEN != 'ВАШ_ТОКЕН_БОТА' else '❌ НЕ УСТАНОВЛЕН'}")
+    print(f"Токен бота: {'✅ Установлен' if API_TOKEN else '❌ НЕ УСТАНОВЛЕН'}")
     print(f"MySQL: {MYSQL_HOST}:{MYSQL_PORT}")
     print(f"VK API: {'✅ Доступен' if vk else '❌ Отключен'}")
     print(f"Админов: {len(ADMIN_IDS)}")
+    print(f"Режим: {'☁️ Облачный' if IS_CLOUD else '💻 Локальный'}")
     print("=" * 60)
 
     logger.info("🚀 Инициализация бота...")
@@ -1175,17 +1286,35 @@ async def on_startup():
     else:
         logger.warning("⚠️ Проблемы с базой данных")
 
+    # Проверяем подключение к MySQL
+    try:
+        async with await get_mysql_connection() as conn:
+            await conn.ping()
+        logger.info("✅ Подключение к MySQL успешно")
+    except Exception as e:
+        logger.error(f"❌ Ошибка подключения к MySQL: {e}")
+        print(f"❌ Ошибка подключения к MySQL: {e}")
+        print("Проверьте:")
+        print("1. Доступность MySQL сервера")
+        print("2. Правильность логина и пароля")
+        print("3. Разрешен ли доступ с IP хостинга")
+        if IS_CLOUD:
+            print("4. В настройках Render добавлены переменные окружения")
+        raise
+
     # Получаем информацию о боте
     try:
         bot_info = await bot.get_me()
         logger.info(f"✅ Бот авторизован: @{bot_info.username} (ID: {bot_info.id})")
         print(f"\n✅ Бот запущен: @{bot_info.username}")
         print(f"👋 Напишите боту: https://t.me/{bot_info.username}")
-        print("\n📊 Мониторинг запущен. Логи пишутся в bot.log")
+        if not IS_CLOUD:
+            print("\n📊 Мониторинг запущен. Логи пишутся в bot.log")
         print("=" * 60)
     except Exception as e:
         logger.error(f"❌ Ошибка авторизации бота: {e}")
         print(f"❌ Ошибка авторизации: {e}")
+        print("Проверьте API_TOKEN в переменных окружения или config.py")
         raise
 
     # Планируем периодический лог статистики
@@ -1232,8 +1361,6 @@ if __name__ == "__main__":
         logger.info("✅ psutil загружен для мониторинга системы")
     except ImportError:
         logger.warning("⚠️ psutil не установлен. Мониторинг системы отключен.")
-        print("⚠️ Установите psutil для мониторинга системы: pip install psutil")
-        print("Бот запустится без мониторинга системы.")
 
     # Запускаем бота
     try:
@@ -1242,3 +1369,8 @@ if __name__ == "__main__":
         print("\n👋 Бот остановлен")
     except Exception as e:
         print(f"\n💥 Ошибка запуска: {e}")
+        if IS_CLOUD:
+            print("\n🔧 Для Render.com:")
+            print("1. Проверьте переменные окружения в Dashboard")
+            print("2. Убедитесь что API_TOKEN, MYSQL_PASSWORD установлены")
+            print("3. Проверьте логи в Render Dashboard")
